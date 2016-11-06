@@ -1,0 +1,133 @@
+# Docker compose settings
+
+# Version
+version: '2'
+
+# Networks
+networks:
+  fc_net:
+    driver: bridge
+
+# Services
+services:
+
+  # Database
+  db:
+    image: mysql
+    container_name: fc_db
+    networks:
+      - fc_net
+    ports:
+      - "53306:3306"
+    environment:
+      - MYSQL_ALLOW_EMPTY_PASSWORD=yes
+      - MYSQL_DATABASE=${FC_CMS_DB_NAME}
+      - MYSQL_USER=${FC_CMS_DB_USER}
+      - MYSQL_PASSWORD=${FC_CMS_DB_PASSWORD}
+    volumes:
+      - ${FC_SRC_DIR}/fc_docker/data/db:/var/lib/mysql
+
+  # PHP engine
+  php_fpm:
+    build: ${FC_SRC_DIR}/fc_docker/modules/fc_php_fpm
+    image: fc_php_fpm
+    container_name: fc_php_fpm
+    networks:
+      - fc_net
+    depends_on:
+      - db      
+    links:
+      - db:db.frontcoder.vm    
+    env_file:
+      -  ${FC_SRC_DIR}/fc_docker/.env
+    volumes:
+      - ${FC_SRC_DIR}/fc_docker/modules/fc_cms/wp-config.php:/var/www/cms.frontcoder.vm/wp-config.php
+      - ${FC_SRC_DIR}/fc-cms1:/var/www/cms.frontcoder.vm
+
+ # CMS web server (nginx)
+  cms_01:
+    image:  nginx
+    container_name: fc_cms_01
+    networks:
+      - fc_net
+    depends_on:
+      - php_fpm     
+    links:
+      - db:db.frontcoder.vm   
+      - php_fpm:php_fpm.frontcoder.vm
+    env_file:
+      -  ${FC_SRC_DIR}/fc_docker/.env
+    volumes:
+      - ${FC_SRC_DIR}/fc_docker/common/ssl/ssl-cert-snakeoil.pem:/etc/ssl/certs/ssl-cert-snakeoil.pem
+      - ${FC_SRC_DIR}/fc_docker/common/ssl/ssl-cert-snakeoil.key:/etc/ssl/private/ssl-cert-snakeoil.key
+      - ${FC_SRC_DIR}/fc_docker/modules/fc_cms/nginx.conf:/etc/nginx/conf.d/cms.frontcoder.vm.conf
+      - ${FC_SRC_DIR}/fc_docker/modules/fc_cms/wp-config.php:/var/www/cms.frontcoder.vm/wp-config.php
+      - ${FC_SRC_DIR}/fc-cms1:/var/www/cms.frontcoder.vm
+
+ # CMS web server (nginx)
+  cms_02:
+    image:  nginx
+    container_name: fc_cms_02
+    networks:
+      - fc_net
+    depends_on:
+      - php_fpm     
+    links:
+      - db:db.frontcoder.vm   
+      - php_fpm:php_fpm.frontcoder.vm
+    env_file:
+      -  ${FC_SRC_DIR}/fc_docker/.env
+    volumes:
+      - ${FC_SRC_DIR}/fc_docker/common/ssl/ssl-cert-snakeoil.pem:/etc/ssl/certs/ssl-cert-snakeoil.pem
+      - ${FC_SRC_DIR}/fc_docker/common/ssl/ssl-cert-snakeoil.key:/etc/ssl/private/ssl-cert-snakeoil.key
+      - ${FC_SRC_DIR}/fc_docker/modules/fc_cms/nginx.conf:/etc/nginx/conf.d/cms.frontcoder.vm.conf
+      - ${FC_SRC_DIR}/fc_docker/modules/fc_cms/wp-config.php:/var/www/cms.frontcoder.vm/wp-config.php
+      - ${FC_SRC_DIR}/fc-cms1:/var/www/cms.frontcoder.vm
+
+  # Static web server (nginx)
+  web_static_01:
+    image:  nginx
+    container_name: fc_web_static_01
+    networks:
+      - fc_net
+    volumes:
+      - ${FC_SRC_DIR}/fc_docker/common/ssl/ssl-cert-snakeoil.pem:/etc/ssl/certs/ssl-cert-snakeoil.pem
+      - ${FC_SRC_DIR}/fc_docker/common/ssl/ssl-cert-snakeoil.key:/etc/ssl/private/ssl-cert-snakeoil.key
+      - ${FC_SRC_DIR}/fc_docker/modules/fc_web/nginx.conf:/etc/nginx/conf.d/web_static.frontcoder.vm.conf
+      - ${FC_SRC_DIR}/fc-web1:/var/www/web_static.frontcoder.vm
+
+  # Static web server (nginx)
+  web_static_02:
+    image:  nginx
+    container_name: fc_web_static_02
+    networks:
+      - fc_net
+    volumes:
+      - ${FC_SRC_DIR}/fc_docker/common/ssl/ssl-cert-snakeoil.pem:/etc/ssl/certs/ssl-cert-snakeoil.pem
+      - ${FC_SRC_DIR}/fc_docker/common/ssl/ssl-cert-snakeoil.key:/etc/ssl/private/ssl-cert-snakeoil.key
+      - ${FC_SRC_DIR}/fc_docker/modules/fc_web/nginx.conf:/etc/nginx/conf.d/web_static.frontcoder.vm.conf
+      - ${FC_SRC_DIR}/fc-web1:/var/www/web_static.frontcoder.vm
+
+  # Load balancer (nginx)
+  load_balancer:
+    image: nginx
+    container_name: fc_lb
+    networks:
+      - fc_net
+    depends_on:
+      - web_static_01
+      - web_static_02
+      - cms_01
+      - cms_02
+    ports:
+      - "50080:80"
+      - "50443:443"
+    links:
+      - web_static_01:web_static_01.frontcoder.vm
+      - web_static_02:web_static_02.frontcoder.vm
+      - cms_01:cms_01.frontcoder.vm
+      - cms_02:cms_02.frontcoder.vm
+    volumes:
+      - ${FC_SRC_DIR}/fc_docker/common/ssl/ssl-cert-snakeoil.pem:/etc/ssl/certs/ssl-cert-snakeoil.pem
+      - ${FC_SRC_DIR}/fc_docker/common/ssl/ssl-cert-snakeoil.key:/etc/ssl/private/ssl-cert-snakeoil.key
+      - ${FC_SRC_DIR}/fc_docker/modules/fc_lb/nginx.conf:/etc/nginx/conf.d/lb.frontcoder.vm.conf
